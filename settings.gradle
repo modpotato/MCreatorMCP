@@ -1,0 +1,6 @@
+rootProject.name = 'MCreatorMCP'
+
+include ":MCreator"
+project(":MCreator").projectDir = file(mcreator_path)
+
+include ':mcp-server'

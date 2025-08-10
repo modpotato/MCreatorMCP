@@ -1,0 +1,85 @@
+import groovy.json.JsonSlurper
+
+plugins {
+    id "java"
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://repo.gradle.org/gradle/libs-releases" } // for gradle-tooling-api
+    flatDir { dirs mcreator_path + '/lib' }
+}
+
+group = 'net.mcreator.MCreatorMCP'
+version = new JsonSlurper().parse(file('src/main/resources/plugin.json'))['info']['version']
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+configurations {
+    implementation.extendsFrom export
+}
+
+dependencies {
+    implementation project(':MCreator')
+
+    project(':MCreator').afterEvaluate {
+        project(":MCreator").configurations.named("implementation").get().dependencies.each {
+            //noinspection ForeignDelegate
+            implementation it
+        }
+    }
+
+    // Uncomment the following two lines if you need to use JavaFX in your plugin
+    //implementation group: 'org.openjfx', name: 'javafx-web', version: '21.0.2'
+    //implementation group: 'org.openjfx', name: 'javafx-swing', version: '21.0.2'
+
+    // Use "export" configuration for dependencies that should be included in the plugin (if MCreator does not provide them)
+    // export group: 'org.example', name: 'example-library', version: '1.2.3'
+}
+
+tasks.jar {
+    archiveFileName.set("MCreatorMCP.zip")
+
+    // include normal exported deps (unchanged)
+    from { configurations.export.collect { it.isDirectory() ? it : zipTree(it) } }
+
+    // build Quarkus first (prod profile -> uber-jar)
+    dependsOn ':mcp-server:quarkusBuild'
+
+    // pick the produced *-runner.jar and place it where the plugin expects it
+    from(project(':mcp-server').layout.buildDirectory.file("mcp-server-unspecified-runner.jar")) {
+        into("lib/mcp-server")
+        rename { "quarkus-run.jar" }
+    }
+}
+
+tasks.register('runMCreatorWithPlugin', JavaExec) {
+    dependsOn jar
+
+    environment("MCREATOR_PLUGINS_FOLDER", file("./build/libs"))
+    environment("MCREATOR_PLUGINS_DEV", "")
+
+    jvmArgs '--add-opens', 'java.base/java.lang=ALL-UNNAMED'
+
+    classpath = project(':MCreator').sourceSets.main.runtimeClasspath
+
+    main = 'net.mcreator.Launcher'
+
+    workingDir = mcreator_path
+}
+
+subprojects { subproject ->
+    subproject.plugins.withType(JavaPlugin) {
+        test {
+            // Avoid circular dependency when building :mcp-server
+            if (subproject.path != ':mcp-server') {
+                dependsOn rootProject.jar
+            }
+
+            environment("MCREATOR_PLUGINS_FOLDER", new File(rootProject.projectDir, "/build/libs"))
+            environment("MCREATOR_PLUGINS_DEV", "")
+
+            workingDir = mcreator_path
+        }
+    }
+}

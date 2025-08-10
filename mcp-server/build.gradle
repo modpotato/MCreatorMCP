@@ -1,0 +1,62 @@
+plugins {
+    id 'java'
+    id 'io.quarkus' version '3.18.1'
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://repo.gradle.org/gradle/libs-releases" }
+    flatDir { dirs rootProject.mcreator_path + '/lib' }
+}
+
+// Force newer Jandex on ALL configurations including Quarkus build-time
+configurations.configureEach {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == 'org.jboss' && details.requested.name == 'jandex') {
+            details.useVersion('3.2.3')
+            details.because('MCP extension requires newer Jandex API')
+        }
+    }
+}
+
+dependencies {
+    implementation enforcedPlatform("io.quarkus.platform:quarkus-bom:3.18.1")
+    
+    // Force newer Jandex version that has getAllKnownImplementations method
+    implementation 'org.jboss:jandex:3.2.3'
+    implementation 'io.quarkus:quarkus-arc'
+    implementation 'io.quarkus:quarkus-jackson'
+    implementation 'io.quarkus:quarkus-rest'
+    implementation 'io.quarkus:quarkus-rest-jackson'
+    implementation 'io.quarkus:quarkus-scheduler'
+    implementation 'io.quarkus:quarkus-smallrye-health'
+
+    implementation('io.quarkiverse.mcp:quarkus-mcp-server-sse:1.2.0')
+
+    implementation project(':MCreator')
+    implementation 'org.reflections:reflections:0.10.2'
+    implementation 'io.quarkus:quarkus-rest-client'
+    implementation 'io.quarkus:quarkus-rest-client-jackson'
+    testImplementation 'io.quarkus:quarkus-junit5'
+    testImplementation 'io.rest-assured:rest-assured'
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    environment("MCREATOR_WORKSPACE", "")
+    environment("MCREATOR_IPC_PORT", "9876")
+}
+
+quarkus {
+    buildForkOptions {
+        jvmArgs += [
+            '--add-opens=java.base/java.lang=ALL-UNNAMED',
+            '--add-opens=java.base/java.util=ALL-UNNAMED',
+            '--add-opens=java.base/java.io=ALL-UNNAMED'
+        ]
+    }
+}

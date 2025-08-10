@@ -1,0 +1,3 @@
+[submodule "MCreator"]
+	path = MCreator
+	url = https://github.com/MCreator/MCreator.git
