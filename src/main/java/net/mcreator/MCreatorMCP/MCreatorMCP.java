@@ -1,5 +1,8 @@
 package net.mcreator.MCreatorMCP;
 
+import net.mcreator.MCreatorMCP.mcp.McpServer;
+import net.mcreator.MCreatorMCP.mcp.McpHttpTransport;
+import net.mcreator.MCreatorMCP.mcp.McpStdioTransport;
 import net.mcreator.plugin.JavaPlugin;
 import net.mcreator.plugin.Plugin;
 import net.mcreator.plugin.events.workspace.MCreatorLoadedEvent;
@@ -10,26 +13,25 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.swing.*;
-import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
-import java.util.concurrent.atomic.AtomicReference;
-import net.mcreator.io.zip.ZipIO;
 
 public class MCreatorMCP extends JavaPlugin {
 
     private static final Logger LOG = LogManager.getLogger("MCreatorMCP");
     
-    private final AtomicReference<Process> mcpServerProcess = new AtomicReference<>();
-    private MCPIPCEndpoint ipcEndpoint;
+    private McpServer mcpServer;
+    private McpHttpTransport httpTransport;
+    private McpStdioTransport stdioTransport;
+    private MCPToolsService toolsService;
     private volatile int currentHttpPort = 5175;
-    private volatile int currentIpcPort = 9876;
 
     public MCreatorMCP(Plugin plugin) {
         super(plugin);
 
-        // Initialize IPC endpoint
-        ipcEndpoint = new MCPIPCEndpoint();
+        // Initialize MCP server
+        mcpServer = new McpServer("MCreator MCP Server", "2.0.0");
+        toolsService = new MCPToolsService();
 
         addListener(MCreatorLoadedEvent.class, event -> SwingUtilities.invokeLater(() -> {
             // Start MCP server
@@ -72,95 +74,31 @@ public class MCreatorMCP extends JavaPlugin {
             // Stop existing server if running
             stopMCPServer();
 
-            String javaExe = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
-            File pluginFile = getPlugin().getFile();
-            File pluginRoot;
-            if (pluginFile.isDirectory()) {
-                pluginRoot = pluginFile;
-            } else {
-                File cacheDir = new File(System.getProperty("java.io.tmpdir"),
-                        "mcreator-mcp/" + getPlugin().getID());
-                boolean hasRunJar =
-                        new File(cacheDir, "lib/mcp-server/quarkus-run.jar").isFile() ||
-                        new File(cacheDir, "lib/mcp-server/quarkus-app/quarkus-run.jar").isFile();
-                if (!hasRunJar) {
-                    ZipIO.unzip(pluginFile.getAbsolutePath(), cacheDir.getAbsolutePath());
-                }
-                pluginRoot = cacheDir;
-            }
-            File mcpServerJar = new File(pluginRoot, "lib/mcp-server/quarkus-run.jar");
-            if (!mcpServerJar.isFile()) {
-                LOG.error("MCP server jar not found at: {}", mcpServerJar.getAbsolutePath());
-                showErrorDialog("MCP Server Not Found", "MCP server jar not found. Please ensure the plugin was built correctly.");
-                return;
-            }
-            File serverHome = mcpServerJar.getParentFile();
-
-            if (!mcpServerJar.exists()) {
-                LOG.error("MCP server jar not found at: {}", mcpServerJar.getAbsolutePath());
-                showErrorDialog("MCP Server Not Found", 
-                    "MCP server jar not found. Please ensure the plugin was built correctly.");
-                return;
-            }
-
-            // Find free ports
+            // Find free port for HTTP transport
             int httpPort = findFreePort(5175);
-            int ipcPort = findFreePort(9876);
             currentHttpPort = httpPort;
-            currentIpcPort = ipcPort;
 
-            // Configure environment
-            ProcessBuilder pb = new ProcessBuilder(
-                javaExe,
-                "-Dquarkus.http.port=" + httpPort,
-                "-Dmcreator.workspace.path=" + event.getMCreator().getWorkspaceFolder().getAbsolutePath(),
-                "-Dmcreator.ipc.port=" + ipcPort,
-                "-Dmcreator.ipc.enabled=true",
-                "-Dmcreator.tools.auto-discovery=true",
-                "-jar",
-                mcpServerJar.getAbsolutePath()
-            );
+            // Set workspace in MCP server
+            mcpServer.setWorkspace(event.getMCreator().getWorkspace());
+            
+            // Register tools with MCP server
+            toolsService.registerTools(mcpServer, event.getMCreator());
 
-            pb.directory(serverHome);
-            pb.environment().put("MCREATOR_WORKSPACE", event.getMCreator().getWorkspaceFolder().getAbsolutePath());
-            pb.environment().put("MCREATOR_IPC_PORT", String.valueOf(ipcPort));
+            // Start HTTP transport
+            httpTransport = new McpHttpTransport(mcpServer, httpPort);
+            httpTransport.start();
 
-            // Redirect output for debugging
-            File logDir = new File(pluginFile.getParent(), "logs");
-            logDir.mkdirs();
-            pb.redirectOutput(new File(logDir, "mcp-server.log"));
-            pb.redirectError(new File(logDir, "mcp-server-error.log"));
-
-            LOG.info("Starting MCP server...");
-            LOG.info("Server jar: {}", mcpServerJar.getAbsolutePath());
-            LOG.info("Workspace: {}", event.getMCreator().getWorkspaceFolder().getAbsolutePath());
-            LOG.info("HTTP port: {}, IPC port: {}", httpPort, ipcPort);
-
-            Process process = pb.start();
-            mcpServerProcess.set(process);
-
-            // Start IPC endpoint
-            ipcEndpoint.start(ipcPort, event.getMCreator());
-
-            // Monitor server process
-            Thread monitorThread = new Thread(() -> {
-                try {
-                    int exitCode = process.waitFor();
-                    LOG.warn("MCP server process exited with code: {}", exitCode);
-                    mcpServerProcess.set(null);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }, "MCP-Server-Monitor");
-            monitorThread.setDaemon(true);
-            monitorThread.start();
+            // Start stdio transport for traditional MCP clients
+            stdioTransport = new McpStdioTransport(mcpServer);
+            stdioTransport.start();
 
             LOG.info("MCP server started successfully");
             showInfoDialog("MCP Server Started", 
-                "MCP server is running on http://localhost:" + httpPort + "/mcp\n" +
-                "Streamable HTTP: http://localhost:" + httpPort + "/mcp\n" +
-                "Legacy SSE: http://localhost:" + httpPort + "/mcp/sse\n" +
-                "IPC Port: " + ipcPort);
+                "MCP server is running:\n" +
+                "HTTP: http://localhost:" + httpPort + "/mcp\n" +
+                "SSE (legacy): http://localhost:" + httpPort + "/mcp/sse\n" +
+                "Stdio: Available for traditional MCP clients\n" +
+                "Health: http://localhost:" + httpPort + "/health");
 
         } catch (IOException e) {
             LOG.error("Failed to start MCP server", e);
@@ -170,26 +108,19 @@ public class MCreatorMCP extends JavaPlugin {
     }
 
     private void stopMCPServer() {
-        Process process = mcpServerProcess.getAndSet(null);
-        if (process != null && process.isAlive()) {
-            LOG.info("Stopping MCP server...");
-            process.destroy();
-            
-            try {
-                if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
-                    LOG.warn("MCP server did not stop gracefully, forcing termination");
-                    process.destroyForcibly();
-                }
-                LOG.info("MCP server stopped");
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                process.destroyForcibly();
-            }
+        if (httpTransport != null) {
+            LOG.info("Stopping MCP HTTP transport...");
+            httpTransport.stop();
+            httpTransport = null;
         }
 
-        if (ipcEndpoint != null) {
-            ipcEndpoint.stop();
+        if (stdioTransport != null) {
+            LOG.info("Stopping MCP stdio transport...");
+            stdioTransport.stop();
+            stdioTransport = null;
         }
+
+        LOG.info("MCP server stopped");
     }
 
     private void restartMCPServer(MCreatorLoadedEvent event) {
@@ -208,15 +139,15 @@ public class MCreatorMCP extends JavaPlugin {
     }
 
     private void showMCPStatus() {
-        Process process = mcpServerProcess.get();
         String status;
         
-        if (process != null && process.isAlive()) {
+        if (mcpServer != null && mcpServer.isInitialized()) {
             status = "MCP Server Status: RUNNING\n" +
                     "HTTP Endpoint: http://localhost:" + currentHttpPort + "/mcp\n" +
                     "SSE Endpoint: http://localhost:" + currentHttpPort + "/mcp/sse\n" +
-                    "IPC Port: " + currentIpcPort + "\n" +
-                    "Process ID: " + process.pid();
+                    "Health Check: http://localhost:" + currentHttpPort + "/health\n" +
+                    "Stdio: Available\n" +
+                    "Workspace: " + (mcpServer.getWorkspace() != null ? "Loaded" : "None");
         } else {
             status = "MCP Server Status: NOT RUNNING";
         }
