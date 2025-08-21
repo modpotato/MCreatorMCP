@@ -34,8 +34,15 @@ dependencies {
     export group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.16.1'
     export group: 'com.fasterxml.jackson.core', name: 'jackson-annotations', version: '2.16.1'
 
+    // Testing dependencies
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
+
     // Use "export" configuration for dependencies that should be included in the plugin (if MCreator does not provide them)
     // export group: 'org.example', name: 'example-library', version: '1.2.3'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 tasks.jar {

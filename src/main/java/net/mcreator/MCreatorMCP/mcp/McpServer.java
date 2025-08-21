@@ -246,6 +246,20 @@ public class McpServer {
         LOG.info("Handling tool call: {} with arguments: {}", toolName, arguments);
         
         try {
+            // Check if we have a custom handler for this tool
+            McpHandler handler = handlers.get(toolName);
+            if (handler != null) {
+                Object handlerResult = handler.handle(arguments);
+                if (handlerResult instanceof McpTypes.ToolResult) {
+                    McpTypes.ToolResult result = (McpTypes.ToolResult) handlerResult;
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("content", result.getContent());
+                    response.put("isError", result.getIsError());
+                    return response;
+                }
+            }
+            
+            // Fallback to default tool execution
             McpTypes.ToolResult result = executeToolCall(toolName, arguments);
             Map<String, Object> response = new HashMap<>();
             response.put("content", result.getContent());
@@ -354,7 +368,10 @@ public class McpServer {
                 overview.put("version", currentWorkspace.getWorkspaceSettings().getVersion());
                 overview.put("author", currentWorkspace.getWorkspaceSettings().getAuthor());
                 overview.put("description", currentWorkspace.getWorkspaceSettings().getDescription());
+                overview.put("mcreatorVersion", currentWorkspace.getWorkspaceSettings().getMCreatorVersion());
                 overview.put("elementCount", currentWorkspace.getModElements().size());
+                overview.put("workspaceFolder", currentWorkspace.getWorkspaceFolder().getAbsolutePath());
+                overview.put("minecraftVersion", currentWorkspace.getWorkspaceSettings().getMCreatorDependencies().toString());
                 
                 try {
                     content.setText(objectMapper.writeValueAsString(overview));
@@ -364,8 +381,55 @@ public class McpServer {
             } else {
                 content.setText("{\"error\":\"No workspace loaded\"}");
             }
+        } else if ("workspace://elements".equals(uri)) {
+            content.setName("Mod Elements");
+            content.setTitle("🧩 Mod Elements");
+            
+            if (currentWorkspace != null) {
+                List<Map<String, Object>> elements = currentWorkspace.getModElements().stream()
+                    .map(element -> {
+                        Map<String, Object> elementMap = new HashMap<>();
+                        elementMap.put("name", element.getName());
+                        elementMap.put("type", element.getType().getRegistryName());
+                        elementMap.put("isLocked", element.isCodeLocked());
+                        elementMap.put("sortIndex", element.getSortID());
+                        return elementMap;
+                    })
+                    .collect(java.util.stream.Collectors.toList());
+                
+                Map<String, Object> result = new HashMap<>();
+                result.put("elements", elements);
+                result.put("count", elements.size());
+                
+                try {
+                    content.setText(objectMapper.writeValueAsString(result));
+                } catch (IOException e) {
+                    content.setText("{\"error\":\"Failed to serialize elements\"}");
+                }
+            } else {
+                content.setText("{\"error\":\"No workspace loaded\"}");
+            }
+        } else if ("workspace://structure".equals(uri)) {
+            content.setName("Project Structure");
+            content.setTitle("📂 Project Structure");
+            
+            if (currentWorkspace != null) {
+                Map<String, Object> structure = new HashMap<>();
+                structure.put("workspaceFolder", currentWorkspace.getWorkspaceFolder().getAbsolutePath());
+                structure.put("srcFolder", currentWorkspace.getWorkspaceFolder().getAbsolutePath() + "/src");
+                structure.put("elementsFolder", currentWorkspace.getWorkspaceFolder().getAbsolutePath() + "/elements");
+                structure.put("resourcesFolder", currentWorkspace.getWorkspaceFolder().getAbsolutePath() + "/src/main/resources");
+                
+                try {
+                    content.setText(objectMapper.writeValueAsString(structure));
+                } catch (IOException e) {
+                    content.setText("{\"error\":\"Failed to serialize structure\"}");
+                }
+            } else {
+                content.setText("{\"error\":\"No workspace loaded\"}");
+            }
         } else {
-            content.setText("{\"error\":\"Resource not found\"}");
+            content.setText("{\"error\":\"Resource not found: " + uri + "\"}");
         }
         
         return content;

@@ -1,31 +1,31 @@
 # MCreator MCP Integration Plugin
 
-A comprehensive Model Context Protocol (MCP) server implementation for MCreator that enables LLM applications to interact with MCreator workspaces, build projects, manage mod elements, and access workspace resources.
+A lightweight Model Context Protocol (MCP) server implementation for MCreator that enables LLM applications to interact with MCreator workspaces, build projects, manage mod elements, and access workspace resources.
 
 ## Features
 
-### 🛠️ **Dynamic Tool Discovery**
-- Automatically discovers and exposes MCreator APIs as MCP tools
-- Built-in tools for workspace management, element creation, building, and testing
-- Dynamically generated tools based on MCreator's Java SDK
+### 🛠️ **Direct Integration**
+- Native MCP server implementation without external dependencies
+- Direct MCreator API integration for optimal performance
+- JSON-RPC 2.0 protocol compliance according to MCP specification
+- No separate JAR processes or IPC overhead
 
 ### 🔧 **Core Tools**
 - **Workspace Management**: Build, regenerate code, get info, settings
 - **Element Operations**: List, create, edit, delete mod elements
 - **Testing**: Run Minecraft client/server with mods
-- **Resources**: Access textures, sounds, models, structures
-- **Variables**: Manage workspace variables and localization
-- **Project Structure**: Browse and analyze project files
+- **Resources**: Access workspace overview, elements, project structure
 
 ### 🌐 **Multiple Transport Support**
-- **Streamable HTTP** (MCP 2025-03-26): `http://localhost:<port>/mcp` (default 5175)
-- **HTTP/SSE** (MCP 2024-11-05): `http://localhost:<port>/mcp/sse` (default 5175)
-- Both transports supported simultaneously for maximum compatibility
+- **HTTP**: `http://localhost:<port>/mcp` (standard MCP protocol)
+- **SSE**: `http://localhost:<port>/mcp/sse` (legacy compatibility)
+- **Stdio**: Traditional MCP client support
+- **Health**: `http://localhost:<port>/health` (monitoring)
 
 ### 📊 **Rich Resources**
 - Complete workspace overview with metadata and statistics
 - Project structure and file organization
-- Live workspace statistics via IPC bridge
+- Live workspace statistics and element information
 - Configuration and build information
 
 ## Quick Start
@@ -55,49 +55,44 @@ A comprehensive Model Context Protocol (MCP) server implementation for MCreator 
 ### Connecting LLM Clients
 
 The MCP server exposes endpoints at (default port 5175 unless dynamically selected):
-- **Streamable HTTP**: `http://localhost:<port>/mcp`
-- **Legacy SSE**: `http://localhost:<port>/mcp/sse`
+- **HTTP**: `http://localhost:<port>/mcp` (standard MCP protocol)
+- **SSE**: `http://localhost:<port>/mcp/sse` (legacy compatibility)
+- **Stdio**: Connect directly via stdin/stdout for traditional MCP clients
 - **Health Check**: `http://localhost:<port>/health`
-- **Admin Interface**: `http://localhost:<port>/admin/status`
 
 Configure your MCP-compatible client to connect to one of these endpoints.
 
 ## Architecture
 
-### Sidecar Process Design
+### Simplified Direct Integration
 ```
-┌─────────────────┐     IPC      ┌─────────────────┐     MCP     ┌─────────────────┐
-│   MCreator      │◄────────────►│   MCP Server    │◄───────────►│   LLM Client    │
-│   + Plugin      │   HTTP:9876  │   (Quarkus)     │  HTTP:<port>│   (Editor/Agent)│
-└─────────────────┘              └─────────────────┘             └─────────────────┘
+┌─────────────────┐     Direct      ┌─────────────────┐
+│   MCreator      │◄───────────────►│   LLM Client    │
+│   + MCP Plugin  │    MCP Protocol │   (Editor/Agent)│
+└─────────────────┘                 └─────────────────┘
 ```
 
-- **MCreator Plugin**: Manages MCP server lifecycle and provides IPC endpoint
-- **MCP Server**: Standalone Quarkus application with dynamic tool discovery
-- **IPC Bridge**: HTTP-based communication between plugin and server
-- **Clean Separation**: No classpath conflicts, easy upgrades, stable operation
+- **MCreator Plugin**: Contains integrated MCP server with direct API access
+- **No External Processes**: Everything runs within the plugin JVM
+- **Direct Integration**: No IPC overhead, immediate MCreator API access
+- **Clean Architecture**: Lightweight, fast, and maintainable
 
-Note: Ports shown are defaults. The plugin may select a free port at runtime to avoid conflicts; check the plugin status dialog or logs for the actual port.
+Note: Ports are dynamically selected to avoid conflicts. Check the plugin status dialog or logs for the actual port.
 
 ### Project Structure
 ```
-MCreatorMCP1/
+MCreatorMCP/
 ├── src/main/java/net/mcreator/MCreatorMCP/
-│   ├── MCreatorMCP.java           # Main plugin entry point
-│   └── MCPIPCEndpoint.java           # IPC server running in MCreator
-├── mcp-server/                       # MCP Server (Quarkus)
-│   ├── src/main/java/net/mcreator/mcp/
-│   │   ├── MCPServerApplication.java # Main server application
-│   │   ├── ToolDiscoveryService.java # Dynamic API discovery
-│   │   ├── MCPToolsService.java      # Tool implementations
-│   │   ├── WorkspaceResourceService.java # Resource providers
-│   │   ├── IPCBridgeService.java     # IPC client
-│   │   └── *.java                    # Supporting classes
-│   └── src/main/resources/
-│       └── application.properties    # Server configuration
-├── build.gradle                     # Root build with plugin packaging
-├── mcp-server/build.gradle          # MCP server build (Quarkus)
-└── settings.gradle                  # Multi-project setup
+│   ├── MCreatorMCP.java              # Main plugin entry point
+│   ├── MCPToolsService.java          # MCreator tool implementations
+│   └── mcp/                          # MCP server implementation
+│       ├── McpServer.java            # Core MCP server
+│       ├── JsonRpcMessage.java       # JSON-RPC message handling
+│       ├── McpTypes.java             # MCP protocol data types
+│       ├── McpHttpTransport.java     # HTTP/SSE transport
+│       └── McpStdioTransport.java    # Stdio transport
+├── build.gradle                     # Plugin build configuration
+└── settings.gradle                  # Project setup
 ```
 
 ## Available Tools
@@ -130,70 +125,47 @@ MCreatorMCP1/
 ## Resources
 
 ### Available Resources
-- `workspace://overview` - Complete workspace overview
-- `workspace://elements` - All mod elements with properties
-- `workspace://variables` - Workspace variables
-- `workspace://structure` - Project directory structure
-- `workspace://resources` - Resource files (textures, sounds, etc.)
-- `workspace://settings` - Workspace configuration
-- `workspace://build-info` - Build and Gradle information
+- `workspace://overview` - Complete workspace overview with metadata
+- `workspace://elements` - All mod elements with properties and details
+- `workspace://structure` - Project directory structure and organization
 
 ## Configuration
 
-### MCP Server (application.properties)
-```properties
-# HTTP Configuration
-quarkus.http.port=5175
-quarkus.mcp.server.sse.root-path=/mcp
+The MCP server is automatically configured by the plugin with sensible defaults:
 
-# MCreator Integration
-mcreator.workspace.path=/path/to/workspace
-mcreator.ipc.port=9876
-mcreator.ipc.enabled=true
-mcreator.tools.auto-discovery=true
-```
+- **HTTP Port**: Auto-selected starting from 5175
+- **Transport Methods**: HTTP, SSE, and Stdio enabled by default
+- **Workspace Integration**: Automatic detection when MCreator workspace loads
+- **Tool Registration**: All MCreator tools automatically registered
 
-### Environment Variables
-- `MCREATOR_WORKSPACE` - Workspace path
-- `MCREATOR_IPC_PORT` - IPC communication port
-- `MCP_SERVER_PORT` - MCP server HTTP port
+No additional configuration needed - just install and run!
 
 ## Development
 
 ### Building
 ```bash
-# Build everything
-./gradlew build
-
-# Build just the plugin
+# Build the plugin
 ./gradlew jar
-
-# Build just the MCP server
-./gradlew :mcp-server:build
 
 # Run MCreator with plugin
 ./gradlew runMCreatorWithPlugin
 
-# Run MCP server in dev mode (for testing)
-cd mcp-server && ../gradlew quarkusDev
+# Clean build
+./gradlew clean build
 ```
 
 ### Debugging
-- Plugin logs: MCreator console
-- MCP Server logs: `{plugin-dir}/logs/mcp-server.log`
-- IPC communication: Enable DEBUG logging in both components
+- Plugin logs: MCreator console output
+- MCP Protocol: Enable DEBUG logging in MCreator console
+- Network traffic: Monitor HTTP endpoints with browser dev tools
 
 ### Testing Tools
 ```bash
 # Test MCP endpoints
 curl http://localhost:<port>/health
-curl http://localhost:<port>/admin/status
-curl http://localhost:<port>/admin/tools
-
-# Test IPC
-curl -X POST http://localhost:9876/mcp-ipc \
+curl -X POST http://localhost:<port>/mcp \
   -H "Content-Type: application/json" \
-  -d '{"action":"ping"}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0"}}}'
 ```
 
 ## Troubleshooting
@@ -202,28 +174,23 @@ curl -X POST http://localhost:9876/mcp-ipc \
 
 **MCP Server won't start**:
 - Check Java 21+ is available
-- Verify the HTTP port is free (default 5175). The plugin can auto-select a free port to avoid conflicts.
-- Check plugin logs for errors
+- Verify the HTTP port is free (default 5175). The plugin will auto-select a free port.
+- Check MCreator console for errors
 
-**IPC communication fails**:
-- Verify port 9876 is available
-- Check MCreator workspace is loaded
-- Restart both plugin and server
-
-**Tools not discovered**:
-- Enable `mcreator.tools.auto-discovery=true`
-- Check MCreator classpath availability
-- Review server startup logs
+**Tools not working**:
+- Ensure MCreator workspace is loaded
+- Check plugin status via "MCP Server Status" menu
+- Restart MCP server if needed
 
 **Client connection issues**:
-- Try legacy SSE endpoint if Streamable HTTP fails
+- Try different transport methods (HTTP vs SSE vs Stdio)
 - Check CORS settings for web clients
-- Verify MCP client protocol version
+- Verify MCP client protocol version compatibility
 
 ### Monitoring
 - Health checks: `http://localhost:<port>/health`
-- Metrics: `http://localhost:<port>/admin/metrics`
-- Tool registry: `http://localhost:<port>/admin/tools`
+- Plugin status: "MCP Server Status" menu in MCreator
+- Console logs: Enable DEBUG logging in MCreator
 
 ## Contributing
 
@@ -241,5 +208,4 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 
 - [MCreator](https://mcreator.net/) - Minecraft mod creation platform
 - [Model Context Protocol](https://modelcontextprotocol.io/) - Protocol specification
-- [Quarkus MCP Server](https://docs.quarkiverse.io/quarkus-mcp-server/dev/index.html) - MCP server framework
 - [MCreator Plugin Development](https://mcreator.net/wiki/developing-mcreator-plugins) - Plugin development guide
