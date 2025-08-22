@@ -29,28 +29,27 @@ dependencies {
         }
     }
 
-    // Uncomment the following two lines if you need to use JavaFX in your plugin
-    //implementation group: 'org.openjfx', name: 'javafx-web', version: '21.0.2'
-    //implementation group: 'org.openjfx', name: 'javafx-swing', version: '21.0.2'
+    // JSON processing for MCP server
+    export group: 'com.fasterxml.jackson.core', name: 'jackson-core', version: '2.16.1'
+    export group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.16.1'
+    export group: 'com.fasterxml.jackson.core', name: 'jackson-annotations', version: '2.16.1'
+
+    // Testing dependencies
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
 
     // Use "export" configuration for dependencies that should be included in the plugin (if MCreator does not provide them)
     // export group: 'org.example', name: 'example-library', version: '1.2.3'
 }
 
+test {
+    useJUnitPlatform()
+}
+
 tasks.jar {
     archiveFileName.set("MCreatorMCP.zip")
 
-    // include normal exported deps (unchanged)
+    // include normal exported deps (Jackson for JSON processing)
     from { configurations.export.collect { it.isDirectory() ? it : zipTree(it) } }
-
-    // build Quarkus first (prod profile -> uber-jar)
-    dependsOn ':mcp-server:quarkusBuild'
-
-    // pick the produced *-runner.jar and place it where the plugin expects it
-    from(project(':mcp-server').layout.buildDirectory.file("mcp-server-unspecified-runner.jar")) {
-        into("lib/mcp-server")
-        rename { "quarkus-run.jar" }
-    }
 }
 
 tasks.register('runMCreatorWithPlugin', JavaExec) {
@@ -71,11 +70,6 @@ tasks.register('runMCreatorWithPlugin', JavaExec) {
 subprojects { subproject ->
     subproject.plugins.withType(JavaPlugin) {
         test {
-            // Avoid circular dependency when building :mcp-server
-            if (subproject.path != ':mcp-server') {
-                dependsOn rootProject.jar
-            }
-
             environment("MCREATOR_PLUGINS_FOLDER", new File(rootProject.projectDir, "/build/libs"))
             environment("MCREATOR_PLUGINS_DEV", "")
 
