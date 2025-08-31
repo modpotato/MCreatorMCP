@@ -368,7 +368,7 @@ public class McpServer {
                 overview.put("version", currentWorkspace.getWorkspaceSettings().getVersion());
                 overview.put("author", currentWorkspace.getWorkspaceSettings().getAuthor());
                 overview.put("description", currentWorkspace.getWorkspaceSettings().getDescription());
-                overview.put("mcreatorVersion", currentWorkspace.getWorkspaceSettings().getMCreatorVersion());
+                overview.put("mcreatorVersion", String.valueOf(currentWorkspace.getMCreatorVersion()));
                 overview.put("elementCount", currentWorkspace.getModElements().size());
                 overview.put("workspaceFolder", currentWorkspace.getWorkspaceFolder().getAbsolutePath());
                 overview.put("minecraftVersion", currentWorkspace.getWorkspaceSettings().getMCreatorDependencies().toString());
@@ -392,7 +392,7 @@ public class McpServer {
                         elementMap.put("name", element.getName());
                         elementMap.put("type", element.getType().getRegistryName());
                         elementMap.put("isLocked", element.isCodeLocked());
-                        elementMap.put("sortIndex", element.getSortID());
+                        elementMap.put("sortIndex", element.getName());
                         return elementMap;
                     })
                     .collect(java.util.stream.Collectors.toList());

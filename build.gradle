@@ -1,5 +1,7 @@
 import groovy.json.JsonSlurper
 
+import org.gradle.api.file.DuplicatesStrategy
+
 plugins {
     id "java"
 }
@@ -47,6 +49,9 @@ test {
 
 tasks.jar {
     archiveFileName.set("MCreatorMCP.zip")
+
+    // Handle duplicate files
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
     // include normal exported deps (Jackson for JSON processing)
     from { configurations.export.collect { it.isDirectory() ? it : zipTree(it) } }

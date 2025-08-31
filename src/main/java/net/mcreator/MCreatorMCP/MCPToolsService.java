@@ -3,6 +3,7 @@ package net.mcreator.MCreatorMCP;
 import net.mcreator.MCreatorMCP.mcp.McpServer;
 import net.mcreator.MCreatorMCP.mcp.McpTypes;
 import net.mcreator.element.ModElementType;
+import net.mcreator.element.ModElementTypeLoader;
 import net.mcreator.workspace.Workspace;
 import net.mcreator.workspace.elements.ModElement;
 import net.mcreator.ui.MCreator;
@@ -86,7 +87,7 @@ public class MCPToolsService {
             info.put("version", workspace.getWorkspaceSettings().getVersion());
             info.put("author", workspace.getWorkspaceSettings().getAuthor());
             info.put("description", workspace.getWorkspaceSettings().getDescription());
-            info.put("mcreatorVersion", workspace.getWorkspaceSettings().getMCreatorVersion());
+            info.put("mcreatorVersion", String.valueOf(workspace.getMCreatorVersion()));
             info.put("elementCount", workspace.getModElements().size());
             info.put("workspaceFolder", workspace.getWorkspaceFolder().getAbsolutePath());
 
@@ -136,7 +137,7 @@ public class MCPToolsService {
             }
 
             String elementType = (String) params.get("elementType");
-            List<ModElement> elements = workspace.getModElements();
+            Collection<ModElement> elements = workspace.getModElements();
 
             // Filter by type if specified
             if (elementType != null && !elementType.trim().isEmpty()) {
@@ -188,7 +189,7 @@ public class MCPToolsService {
 
             // Find the ModElementType
             ModElementType type = null;
-            for (ModElementType met : ModElementType.values()) {
+            for (ModElementType met : ModElementTypeLoader.getAllModElementTypes()) {
                 if (met.getRegistryName().equalsIgnoreCase(elementType.trim())) {
                     type = met;
                     break;
@@ -315,7 +316,7 @@ public class MCPToolsService {
         map.put("name", element.getName());
         map.put("type", element.getType().getRegistryName());
         map.put("isLocked", element.isCodeLocked());
-        map.put("sortIndex", element.getSortID());
+        map.put("sortIndex", element.getName());
         return map;
     }
 
